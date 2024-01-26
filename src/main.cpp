@@ -1,5 +1,8 @@
+#define DISABLEMILLIS
 #include <Arduino.h>
 #include <usbdrv.h>
+#include <avr/sleep.h>
+#include <avr/power.h>
 //#include <HidSensorSpec.h>
 #include <util/delay.h>
 #include <SK6812_io.cpp>
@@ -263,8 +266,11 @@ struct __attribute__ ((__packed__)) LampArrayControlReport
 
 
 constexpr uint8_t pinStrip = 8u;
+constexpr uint16_t lampsPerMeter = 60;
 constexpr uint16_t m_lampCount = 37u;
-constexpr uint32_t m_boundingBoxWidthInMicrometers = 500ul * 1000ul;
+
+constexpr float m_lampSpacing = 1000.0/lampsPerMeter * 1000ul;
+constexpr uint32_t m_boundingBoxWidthInMicrometers = m_lampCount * m_lampSpacing;
 constexpr uint32_t m_boundingBoxHeightInMicrometers = 0ul;
 constexpr uint32_t m_boundingBoxDepthInMicrometers = 0ul;
 constexpr uint32_t m_minUpdateInternalInMicroseconds = 33333ul;
@@ -278,6 +284,97 @@ PROGMEM const LampArrayAttributesReport lampArrayAttributesReport{
   .LampArrayKind = LampArrayKind::LampArrayKindPeripheral,
   .MinUpdateIntervalInMicroseconds = m_minUpdateInternalInMicroseconds
 };
+
+struct GRBW{
+  uint8_t G;
+  uint8_t R;
+  uint8_t B;
+  uint8_t W;
+
+  inline bool operator==(const GRBW& rhs)
+  {
+    return G==rhs.G && R==rhs.R && B == rhs.B && W == rhs.W;
+  }
+  inline bool operator!=(const GRBW& rhs)
+  {
+    return G!=rhs.G || R!=rhs.R || B != rhs.B || W != rhs.W;
+  }
+};
+
+
+
+template <typename T>
+constexpr T smallest(T x, T y, T z)
+{
+  return x < y ? (x < z ? x : z) : (y < z ? y : z);
+}
+
+const uint8_t PROGMEM gamma8[] = {
+    0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+    0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  1,  1,  1,  1,
+    1,  1,  1,  1,  1,  1,  1,  1,  1,  2,  2,  2,  2,  2,  2,  2,
+    2,  3,  3,  3,  3,  3,  3,  3,  4,  4,  4,  4,  4,  5,  5,  5,
+    5,  6,  6,  6,  6,  7,  7,  7,  7,  8,  8,  8,  9,  9,  9, 10,
+   10, 10, 11, 11, 11, 12, 12, 13, 13, 13, 14, 14, 15, 15, 16, 16,
+   17, 17, 18, 18, 19, 19, 20, 20, 21, 21, 22, 22, 23, 24, 24, 25,
+   25, 26, 27, 27, 28, 29, 29, 30, 31, 32, 32, 33, 34, 35, 35, 36,
+   37, 38, 39, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 50,
+   51, 52, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 66, 67, 68,
+   69, 70, 72, 73, 74, 75, 77, 78, 79, 81, 82, 83, 85, 86, 87, 89,
+   90, 92, 93, 95, 96, 98, 99,101,102,104,105,107,109,110,112,114,
+  115,117,119,120,122,124,126,127,129,131,133,135,137,138,140,142,
+  144,146,148,150,152,154,156,158,160,162,164,167,169,171,173,175,
+  177,180,182,184,186,189,191,193,196,198,200,203,205,208,210,213,
+  215,218,220,223,225,228,231,233,236,239,241,244,247,249,252,255 };
+
+uint8_t gammaCorrect(uint8_t color)
+{
+  return pgm_read_byte(&gamma8[color]);
+}
+
+constexpr GRBW RGBtoRGBW(uint8_t r, uint8_t g, uint8_t b)
+{
+  //constexpr uint8_t r = 255;
+  //constexpr uint8_t g = 212;
+  //constexpr uint8_t b = 177;
+  uint8_t w_out = smallest(r, g, b);
+
+
+  constexpr uint8_t white_rgb_r = 255;
+  constexpr uint8_t white_rgb_g = 255;
+  constexpr uint8_t white_rgb_b = 255;
+
+  constexpr uint8_t white_white_r = 255;
+  constexpr uint8_t white_white_g = 206;
+  constexpr uint8_t white_white_b = 176;
+
+  constexpr float r_a = 1.0 * white_white_r/white_rgb_r;
+  constexpr float g_a = 1.0 * white_white_g/white_rgb_g;
+  constexpr float b_a = 1.0 * white_white_b/white_rgb_b;
+
+
+  uint8_t r_out = r-(uint8_t)(w_out*r_a);
+  uint8_t g_out = g-(uint8_t)(w_out*g_a);
+  uint8_t b_out = b-(uint8_t)(w_out*b_a);
+
+  return GRBW{
+    .G = g_out,
+    .R = r_out,
+    .B = b_out,
+    .W = w_out
+  };
+}
+
+GRBW gammaCorrect(GRBW in)
+{
+  return GRBW{
+    .G = gammaCorrect(in.G),
+    .R = gammaCorrect(in.R),
+    .B = gammaCorrect(in.B),
+    .W = gammaCorrect(in.W)
+  };
+}
+
 
 struct MyLed{
   static constexpr void exportGeneralAttributes(LampAttributes& attributes)
@@ -301,15 +398,22 @@ struct MyLed{
     attributes.PositionXInMillimeters = lampId*(m_boundingBoxWidthInMicrometers/m_lampCount);
   }
 
-  bool set(uint8_t R, uint8_t G, uint8_t B, uint8_t W = 0)
+  bool set(uint8_t R, uint8_t G, uint8_t B, uint8_t W)
   {
-    bool changed = _R!=R || _G!=G || _B!=B || _W!= W;
-    _R = R;
-    _G = G;
-    _B = B;
-    _W = W; //TODO
+    bool changed = color.R!=R || color.G!=G || color.B!=B || color.W!= W;
+    color.R = R;
+    color.G = G;
+    color.B = B;
+    color.W = W; //TODO
 
     return changed;
+  }
+  bool set(uint8_t r, uint8_t g, uint8_t b)
+  {
+    auto newColor = gammaCorrect(RGBtoRGBW(r,g,b));
+    bool res = color!=newColor;
+    color = newColor;
+    return res;
   }
   
   bool set(const LampArrayColor& lampArrayColor)
@@ -317,79 +421,58 @@ struct MyLed{
     return set(lampArrayColor.RedChannel,lampArrayColor.GreenChannel,lampArrayColor.BlueChannel);
   }
 
-  uint8_t _G;
-  uint8_t _R;
-  uint8_t _B;
-  uint8_t _W;
+  GRBW color;
 };
 
 typedef MyLed LED;
 
-struct LEDStrip{
+struct LEDStrip
+{
   LEDStrip()
   {
-	_pin_mask = digitalPinToBitMask(pinStrip);
-	_port = portOutputRegister(digitalPinToPort(pinStrip));
-	_port_reg = portModeRegister(digitalPinToPort(pinStrip));
+    _pin_mask = digitalPinToBitMask(pinStrip);
+    _port = portOutputRegister(digitalPinToPort(pinStrip));
+    _port_reg = portModeRegister(digitalPinToPort(pinStrip));
   }
 
   int16_t updateLedsToIndex = -1;
-  LED leds[m_lampCount];
+  LED leds[m_lampCount] = {0};
 
-uint8_t _pin_mask;
-volatile uint8_t* _port;
-volatile uint8_t* _port_reg;
+  uint8_t _pin_mask;
+  volatile uint8_t *_port;
+  volatile uint8_t *_port_reg;
 
-
-  void setColor(uint16_t index, const LampArrayColor& lampArrayColor)
+  void setColor(uint16_t index, const LampArrayColor &lampArrayColor)
   {
-    if(leds[index].set(lampArrayColor))
-      updateLedsToIndex = max(updateLedsToIndex, index);
+    if (leds[index].set(lampArrayColor))
+      updateLedsToIndex = max(updateLedsToIndex, (int16_t)index);
   }
 
   void updateStrip()
   {
     *_port_reg |= _pin_mask;
 
-    sendarray_mask((uint8_t *)leds, sizeof(leds), _pin_mask, (uint8_t *)_port, (uint8_t *)_port_reg);
-
-
-
+    //updateLedsToIndex = 35;
+    sendarray_mask((uint8_t *)leds, sizeof(*leds) * (updateLedsToIndex + 1), _pin_mask, (uint8_t *)_port, (uint8_t *)_port_reg);
 
     updateLedsToIndex = -1;
   }
-  
-
 
 } ledStrip;
 
-
 uint16_t m_lastLampIdRequested = 0;
+bool m_isAutonomousMode = true;
 
 void setup() {
-  TIMSK0 = 0;
-  ADCSRA &= ~(1<<ADEN); 
-
-  LED_OUT();
-  LED_OFF();
-
-  memset(ledStrip.leds, 0, sizeof(ledStrip.leds));
-  
+  ADCSRA &= ~(1<<ADEN);
+  power_adc_disable ();
+  power_spi_disable();
+  power_twi_disable();
+  //LED_OUT();
+  //LED_OFF();
 
   lampAttributeReport.ReportId = LAMP_ATTRIBUTES_RESPONSE_REPORT_ID;
   LED::exportGeneralAttributes(lampAttributeReport.Attributes);
-
-
-  // lampArrayAttributesReport.ReportId = LAMP_ARRAY_ATTRIBUTES_REPORT_ID;
-  // lampArrayAttributesReport.LampCount = m_lampCount;
-  // lampArrayAttributesReport.BoundingBoxWidthInMillimeters = m_boundingBoxWidthInMicrometers;
-  // lampArrayAttributesReport.BoundingBoxHeightInMillimeters = m_boundingBoxHeightInMicrometers;
-  // lampArrayAttributesReport.BoundingBoxDepthInMillimeters = m_boundingBoxDepthInMicrometers;
-  // lampArrayAttributesReport.LampArrayKind = LampArrayKind::LampArrayKindPeripheral;
-  // lampArrayAttributesReport.MinUpdateIntervalInMicroseconds = m_minUpdateInternalInMicroseconds;
-
-
-  //ledStrip.updateStrip();
 
   noInterrupts();
   usbInit();
@@ -418,7 +501,6 @@ usbMsgLen_t SendLampArrayAttributesReport() noexcept
   usbMsgPtr = (uchar *)&lampArrayAttributesReport;
   usbMsgFlags |= USB_FLG_MSGPTR_IS_ROM;
   return sizeof(lampArrayAttributesReport);
-  //return SendFeatureReport(lampArrayAttributesReport);
 }
 
 usbMsgLen_t SendLampAttributesReport() noexcept
@@ -491,7 +573,7 @@ void UpdateLampStateCacheFromRangeUpdateReport(const LampRangeUpdateReport &repo
 
 void ProcessControlReport(const LampArrayControlReport& report) noexcept
 {
-  //m_isAutonomousMode = !!report.AutonomousMode;
+  m_isAutonomousMode = !!report.AutonomousMode;
 }
 
 void loop()
@@ -507,7 +589,7 @@ void loop()
     {
       usbPoll();
     } while (--timeoutCounter);
-    _delay_ms(1);
+    //_delay_ms(1);
     ledStrip.updateStrip();
   }
 }
