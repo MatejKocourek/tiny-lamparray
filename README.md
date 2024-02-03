@@ -1,5 +1,6 @@
 # tiny-lamparray
 This project is an implementation of [USB HID LampArray](https://learn.microsoft.com/en-us/windows-hardware/design/component-guidelines/dynamic-lighting-devices) for ATtiny88 (MH-ET Live Tiny88). The firmware controls an addressable RGBW strip of type SK6812, forwarding the control of the strip to a supported USB host through a standardized protocol.
+
 ![Lamp Array Effect](https://github.com/MatejKocourek/tiny-lamparray/raw/main/img/LampArrayEffect.gif)
 
 # Features
@@ -13,6 +14,7 @@ At the moment of creating the project, supported hosts are:
 - Xbox GDK March 2023 Update 1 and later
 
 Windows can control the LED device natively from the settings:
+
 ![Settings example](https://learn.microsoft.com/en-us/windows/uwp/devices-sensors/images/lighting/settings-dynamic-lighting-effects.png)
 
 Software running on Windows can utilize the API for displaying various effect. Microsoft provides [this guide](https://learn.microsoft.com/en-us/windows/uwp/devices-sensors/lighting-dynamic-lamparray) for developers.
