@@ -1,279 +1,66 @@
+/*
+ * Copyright (c) 2024 Matej Kocourek
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, version 3.
+ *
+ * This program is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+ * General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program. If not, see <http://www.gnu.org/licenses/>.
+ */
+
 #define DISABLEMILLIS
 #include <Arduino.h>
 #include <usbdrv.h>
-#include <avr/sleep.h>
 #include <avr/power.h>
-//#include <HidSensorSpec.h>
 #include <util/delay.h>
 #include <SK6812_io.cpp>
-
-// HID Report Descriptor
-PROGMEM const uchar usbHidReportDescriptor[USB_CFG_HID_REPORT_DESCRIPTOR_LENGTH] = {
-    0x05, 0x59,                      // UsagePage(Lighting And Illumination[0x0059])
-    0x09, 0x01,                      // UsageId(LampArray[0x0001])
-    0xA1, 0x01,                      // Collection(Application)
-    0x85, 0x01,                      //     ReportId(1)
-    0x09, 0x02,                      //     UsageId(LampArrayAttributesReport[0x0002])
-    0xA1, 0x02,                      //     Collection(Logical)
-    0x09, 0x03,                      //         UsageId(LampCount[0x0003])
-    0x15, 0x00,                      //         LogicalMinimum(0)
-    0x27, 0xFF, 0xFF, 0x00, 0x00,    //         LogicalMaximum(65,535)
-    0x95, 0x01,                      //         ReportCount(1)
-    0x75, 0x10,                      //         ReportSize(16)
-    0xB1, 0x03,                      //         Feature(Constant, Variable, Absolute, NoWrap, Linear, PreferredState, NoNullPosition, NonVolatile, BitField)
-    0x09, 0x04,                      //         UsageId(BoundingBoxWidthInMicrometers[0x0004])
-    0x09, 0x05,                      //         UsageId(BoundingBoxHeightInMicrometers[0x0005])
-    0x09, 0x06,                      //         UsageId(BoundingBoxDepthInMicrometers[0x0006])
-    0x09, 0x07,                      //         UsageId(LampArrayKind[0x0007])
-    0x09, 0x08,                      //         UsageId(MinUpdateIntervalInMicroseconds[0x0008])
-    0x27, 0xFF, 0xFF, 0xFF, 0x7F,    //         LogicalMaximum(2,147,483,647)
-    0x95, 0x05,                      //         ReportCount(5)
-    0x75, 0x20,                      //         ReportSize(32)
-    0xB1, 0x03,                      //         Feature(Constant, Variable, Absolute, NoWrap, Linear, PreferredState, NoNullPosition, NonVolatile, BitField)
-    0xC0,                            //     EndCollection()
-    0x85, 0x02,                      //     ReportId(2)
-    0x09, 0x20,                      //     UsageId(LampAttributesRequestReport[0x0020])
-    0xA1, 0x02,                      //     Collection(Logical)
-    0x09, 0x21,                      //         UsageId(LampId[0x0021])
-    0x27, 0xFF, 0xFF, 0x00, 0x00,    //         LogicalMaximum(65,535)
-    0x95, 0x01,                      //         ReportCount(1)
-    0x75, 0x10,                      //         ReportSize(16)
-    0xB1, 0x02,                      //         Feature(Data, Variable, Absolute, NoWrap, Linear, PreferredState, NoNullPosition, NonVolatile, BitField)
-    0xC0,                            //     EndCollection()
-    0x85, 0x03,                      //     ReportId(3)
-    0x09, 0x22,                      //     UsageId(LampAttributesResponseReport[0x0022])
-    0xA1, 0x02,                      //     Collection(Logical)
-    0x09, 0x21,                      //         UsageId(LampId[0x0021])
-    0xB1, 0x02,                      //         Feature(Data, Variable, Absolute, NoWrap, Linear, PreferredState, NoNullPosition, NonVolatile, BitField)
-    0x09, 0x23,                      //         UsageId(PositionXInMicrometers[0x0023])
-    0x09, 0x24,                      //         UsageId(PositionYInMicrometers[0x0024])
-    0x09, 0x25,                      //         UsageId(PositionZInMicrometers[0x0025])
-    0x09, 0x27,                      //         UsageId(UpdateLatencyInMicroseconds[0x0027])
-    0x09, 0x26,                      //         UsageId(LampPurposes[0x0026])
-    0x27, 0xFF, 0xFF, 0xFF, 0x7F,    //         LogicalMaximum(2,147,483,647)
-    0x95, 0x05,                      //         ReportCount(5)
-    0x75, 0x20,                      //         ReportSize(32)
-    0xB1, 0x02,                      //         Feature(Data, Variable, Absolute, NoWrap, Linear, PreferredState, NoNullPosition, NonVolatile, BitField)
-    0x09, 0x28,                      //         UsageId(RedLevelCount[0x0028])
-    0x09, 0x29,                      //         UsageId(GreenLevelCount[0x0029])
-    0x09, 0x2A,                      //         UsageId(BlueLevelCount[0x002A])
-    0x09, 0x2B,                      //         UsageId(IntensityLevelCount[0x002B])
-    0x09, 0x2C,                      //         UsageId(IsProgrammable[0x002C])
-    0x09, 0x2D,                      //         UsageId(InputBinding[0x002D])
-    0x26, 0xFF, 0x00,                //         LogicalMaximum(255)
-    0x95, 0x06,                      //         ReportCount(6)
-    0x75, 0x08,                      //         ReportSize(8)
-    0xB1, 0x02,                      //         Feature(Data, Variable, Absolute, NoWrap, Linear, PreferredState, NoNullPosition, NonVolatile, BitField)
-    0xC0,                            //     EndCollection()
-    0x85, 0x04,                      //     ReportId(4)
-    0x09, 0x50,                      //     UsageId(LampMultiUpdateReport[0x0050])
-    0xA1, 0x02,                      //     Collection(Logical)
-    0x09, 0x03,                      //         UsageId(LampCount[0x0003])
-    0x25, 0x08,                      //         LogicalMaximum(8)
-    0x95, 0x01,                      //         ReportCount(1)
-    0xB1, 0x02,                      //         Feature(Data, Variable, Absolute, NoWrap, Linear, PreferredState, NoNullPosition, NonVolatile, BitField)
-    0x09, 0x55,                      //         UsageId(LampUpdateFlags[0x0055])
-    0x25, 0x01,                      //         LogicalMaximum(1)
-    0xB1, 0x02,                      //         Feature(Data, Variable, Absolute, NoWrap, Linear, PreferredState, NoNullPosition, NonVolatile, BitField)
-    0x09, 0x21,                      //         UsageId(LampId[0x0021])
-    0x27, 0xFF, 0xFF, 0x00, 0x00,    //         LogicalMaximum(65,535)
-    0x95, 0x08,                      //         ReportCount(8)
-    0x75, 0x10,                      //         ReportSize(16)
-    0xB1, 0x02,                      //         Feature(Data, Variable, Absolute, NoWrap, Linear, PreferredState, NoNullPosition, NonVolatile, BitField)
-    0x09, 0x51,                      //         UsageId(RedUpdateChannel[0x0051])
-    0x09, 0x52,                      //         UsageId(GreenUpdateChannel[0x0052])
-    0x09, 0x53,                      //         UsageId(BlueUpdateChannel[0x0053])
-    0x09, 0x54,                      //         UsageId(IntensityUpdateChannel[0x0054])
-    0x09, 0x51,                      //         UsageId(RedUpdateChannel[0x0051])
-    0x09, 0x52,                      //         UsageId(GreenUpdateChannel[0x0052])
-    0x09, 0x53,                      //         UsageId(BlueUpdateChannel[0x0053])
-    0x09, 0x54,                      //         UsageId(IntensityUpdateChannel[0x0054])
-    0x09, 0x51,                      //         UsageId(RedUpdateChannel[0x0051])
-    0x09, 0x52,                      //         UsageId(GreenUpdateChannel[0x0052])
-    0x09, 0x53,                      //         UsageId(BlueUpdateChannel[0x0053])
-    0x09, 0x54,                      //         UsageId(IntensityUpdateChannel[0x0054])
-    0x09, 0x51,                      //         UsageId(RedUpdateChannel[0x0051])
-    0x09, 0x52,                      //         UsageId(GreenUpdateChannel[0x0052])
-    0x09, 0x53,                      //         UsageId(BlueUpdateChannel[0x0053])
-    0x09, 0x54,                      //         UsageId(IntensityUpdateChannel[0x0054])
-    0x09, 0x51,                      //         UsageId(RedUpdateChannel[0x0051])
-    0x09, 0x52,                      //         UsageId(GreenUpdateChannel[0x0052])
-    0x09, 0x53,                      //         UsageId(BlueUpdateChannel[0x0053])
-    0x09, 0x54,                      //         UsageId(IntensityUpdateChannel[0x0054])
-    0x09, 0x51,                      //         UsageId(RedUpdateChannel[0x0051])
-    0x09, 0x52,                      //         UsageId(GreenUpdateChannel[0x0052])
-    0x09, 0x53,                      //         UsageId(BlueUpdateChannel[0x0053])
-    0x09, 0x54,                      //         UsageId(IntensityUpdateChannel[0x0054])
-    0x09, 0x51,                      //         UsageId(RedUpdateChannel[0x0051])
-    0x09, 0x52,                      //         UsageId(GreenUpdateChannel[0x0052])
-    0x09, 0x53,                      //         UsageId(BlueUpdateChannel[0x0053])
-    0x09, 0x54,                      //         UsageId(IntensityUpdateChannel[0x0054])
-    0x09, 0x51,                      //         UsageId(RedUpdateChannel[0x0051])
-    0x09, 0x52,                      //         UsageId(GreenUpdateChannel[0x0052])
-    0x09, 0x53,                      //         UsageId(BlueUpdateChannel[0x0053])
-    0x09, 0x54,                      //         UsageId(IntensityUpdateChannel[0x0054])
-    0x26, 0xFF, 0x00,                //         LogicalMaximum(255)
-    0x95, 0x20,                      //         ReportCount(32)
-    0x75, 0x08,                      //         ReportSize(8)
-    0xB1, 0x02,                      //         Feature(Data, Variable, Absolute, NoWrap, Linear, PreferredState, NoNullPosition, NonVolatile, BitField)
-    0xC0,                            //     EndCollection()
-    0x85, 0x05,                      //     ReportId(5)
-    0x09, 0x60,                      //     UsageId(LampRangeUpdateReport[0x0060])
-    0xA1, 0x02,                      //     Collection(Logical)
-    0x09, 0x55,                      //         UsageId(LampUpdateFlags[0x0055])
-    0x25, 0x01,                      //         LogicalMaximum(1)
-    0x95, 0x01,                      //         ReportCount(1)
-    0xB1, 0x02,                      //         Feature(Data, Variable, Absolute, NoWrap, Linear, PreferredState, NoNullPosition, NonVolatile, BitField)
-    0x09, 0x61,                      //         UsageId(LampIdStart[0x0061])
-    0x09, 0x62,                      //         UsageId(LampIdEnd[0x0062])
-    0x27, 0xFF, 0xFF, 0x00, 0x00,    //         LogicalMaximum(65,535)
-    0x95, 0x02,                      //         ReportCount(2)
-    0x75, 0x10,                      //         ReportSize(16)
-    0xB1, 0x02,                      //         Feature(Data, Variable, Absolute, NoWrap, Linear, PreferredState, NoNullPosition, NonVolatile, BitField)
-    0x09, 0x51,                      //         UsageId(RedUpdateChannel[0x0051])
-    0x09, 0x52,                      //         UsageId(GreenUpdateChannel[0x0052])
-    0x09, 0x53,                      //         UsageId(BlueUpdateChannel[0x0053])
-    0x09, 0x54,                      //         UsageId(IntensityUpdateChannel[0x0054])
-    0x26, 0xFF, 0x00,                //         LogicalMaximum(255)
-    0x95, 0x04,                      //         ReportCount(4)
-    0x75, 0x08,                      //         ReportSize(8)
-    0xB1, 0x02,                      //         Feature(Data, Variable, Absolute, NoWrap, Linear, PreferredState, NoNullPosition, NonVolatile, BitField)
-    0xC0,                            //     EndCollection()
-    0x85, 0x06,                      //     ReportId(6)
-    0x09, 0x70,                      //     UsageId(LampArrayControlReport[0x0070])
-    0xA1, 0x02,                      //     Collection(Logical)
-    0x09, 0x71,                      //         UsageId(AutonomousMode[0x0071])
-    0x25, 0x01,                      //         LogicalMaximum(1)
-    0x95, 0x01,                      //         ReportCount(1)
-    0xB1, 0x02,                      //         Feature(Data, Variable, Absolute, NoWrap, Linear, PreferredState, NoNullPosition, NonVolatile, BitField)
-    0xC0,                            //     EndCollection()
-    0xC0                             // EndCollection()
-    };
+#include "lampArrayHid.h"
 
 
-#define LAMP_NOT_PROGRAMMABLE 0x00
-#define LAMP_IS_PROGRAMMABLE 0x01
 
-#define LAMP_UPDATE_FLAG_UPDATE_COMPLETE 1
-
-#define LED_OUT() pinMode(0, OUTPUT)
-#define LED_OFF() digitalWrite(0, 0)
-#define LED_ON() digitalWrite(0, 1)
-#define LED_TOGGLE() digitalWrite(0, !digitalRead(LED_BUILTIN))
-
-enum LampPurposeKind
-{
-    LampPurposeControl = 1,
-    LampPurposeAccent = 2,
-    LampPurposeBranding = 4,
-    LampPurposeStatus = 8,
-    LampPurposeIllumination = 16,
-    LampPurposePresentation = 32,
-};
-
-enum LampArrayKind
-{
-    LampArrayKindKeyboard = 1,
-    LampArrayKindMouse = 2,
-    LampArrayKindGameController = 3,
-    LampArrayKindPeripheral = 4,
-    LampArrayKindScene = 5,
-    LampArrayKindNotification = 6,
-    LampArrayKindChassis = 7,
-    LampArrayKindWearable = 8,
-    LampArrayKindFurniture = 9,
-    LampArrayKindArt = 10,
-};
-
-struct __attribute__ ((__packed__)) LampArrayColor
-{
-    uint8_t RedChannel;
-    uint8_t GreenChannel;
-    uint8_t BlueChannel;
-    uint8_t IntensityChannel;
-};
-
-struct __attribute__ ((__packed__)) LampAttributes
-{
-    uint16_t LampId;
-    uint32_t PositionXInMillimeters;
-    uint32_t PositionYInMillimeters;
-    uint32_t PositionZInMillimeters;
-    uint32_t UpdateLatencyInMicroseconds;
-    uint32_t LampPurposes;
-    uint8_t RedLevelCount;
-    uint8_t GreenLevelCount;
-    uint8_t BlueLevelCount;
-    uint8_t IntensityLevelCount;
-    uint8_t IsProgrammable;
-    uint8_t LampKey;
-};
-
-#define LAMP_ARRAY_ATTRIBUTES_REPORT_ID 1
-struct __attribute__ ((__packed__)) LampArrayAttributesReport
-{
-    uint8_t  ReportId;
-    uint16_t LampCount;
-    uint32_t BoundingBoxWidthInMillimeters;
-    uint32_t BoundingBoxHeightInMillimeters;
-    uint32_t BoundingBoxDepthInMillimeters;
-    uint32_t LampArrayKind;
-    uint32_t MinUpdateIntervalInMicroseconds;
-};
-
-#define LAMP_ATTRIBUTES_REQUEST_REPORT_ID 2
-struct __attribute__ ((__packed__)) LampAttributesRequestReport
-{
-    uint8_t ReportId;
-    uint16_t LampId;
-};
-
-#define LAMP_ATTRIBUTES_RESPONSE_REPORT_ID 3
-struct __attribute__ ((__packed__)) LampAttributesResponseReport
-{
-    uint8_t ReportId;
-    LampAttributes Attributes;
-} lampAttributeReport;
-
-#define LAMP_MULTI_UPDATE_REPORT_ID 4
-#define LAMP_MULTI_UPDATE_LAMP_COUNT 8
-struct __attribute__ ((__packed__)) LampMultiUpdateReport
-{
-    uint8_t ReportId;
-    uint8_t LampCount;
-    uint8_t LampUpdateFlags;
-    uint16_t LampIds[LAMP_MULTI_UPDATE_LAMP_COUNT];
-    LampArrayColor UpdateColors[LAMP_MULTI_UPDATE_LAMP_COUNT];
-};
-
-
-#define LAMP_RANGE_UPDATE_REPORT_ID 5
-struct __attribute__ ((__packed__)) LampRangeUpdateReport
-{
-    uint8_t ReportId;
-    uint8_t LampUpdateFlags;
-    uint16_t LampIdStart;
-    uint16_t LampIdEnd;
-    LampArrayColor UpdateColor;
-};
-
-#define LAMP_ARRAY_CONTROL_REPORT_ID 6
-struct __attribute__ ((__packed__)) LampArrayControlReport
-{
-    uint8_t ReportId;
-    uint8_t AutonomousMode;
-};
-
-
+/********EASY SETUP*********/
+//Set the PIN the strip is on. Not tested anything besides 8.
 constexpr uint8_t pinStrip = 8u;
+//How many LEDs there is per meter. This is usually the parameter of the product (30, 60, ...).
 constexpr uint16_t lampsPerMeter = 60;
+//How many LEDs is connected to this one strip.
 constexpr uint16_t m_lampCount = 37u;
 
+///This section is used to perform colorspace conversion. We assume (standard is vague) that the PC sends the values in 6500K (usual for LED monitors).
+//Relative to 6500K, what is the most bright color the LED strip can produce by combining RGB diodes.
+//(If we also assume that the RGB LEDs produce 6500K white, all values are 255.)
+constexpr uint8_t white_rgb_r = 255;
+constexpr uint8_t white_rgb_g = 255;
+constexpr uint8_t white_rgb_b = 255;
+//Relative to 6500K, what is the most bright color the LED strip can produce only by its white LED.
+//You can use this page to get the value for the LED strip you bought: https://academo.org/demos/colour-temperature-relationship/
+//The values here correspond to 4000K (natural white).
+constexpr uint8_t white_white_r = 255;
+constexpr uint8_t white_white_g = 206;
+constexpr uint8_t white_white_b = 176;
+/***************************/
+
+/********SETUP*********/
+//If you used easy setup above, no need to change these values. They will be calculated in compile time.
+
+///The LampArray standard expects to know where each LED is located. We need to provide bounding box.
 constexpr float m_lampSpacing = 1000.0/lampsPerMeter * 1000ul;
+//The project assumes one LED strip placed horizontally (with the first LED being on the left).
 constexpr uint32_t m_boundingBoxWidthInMicrometers = m_lampCount * m_lampSpacing;
 constexpr uint32_t m_boundingBoxHeightInMicrometers = 0ul;
 constexpr uint32_t m_boundingBoxDepthInMicrometers = 0ul;
+///The minimal time it takes before all LEDs change color (their resposivness + communication overhead).
+//It might be possible to get smoother effects by decreasing this value, but it comes with the cost of USB stability.
 constexpr uint32_t m_minUpdateInternalInMicroseconds = 33333ul;
+
+//Information about what type of device this is. Use chassis for things inside the PC case, furniture for desk lighting, peripheral for keyboard/monitor, etc.
+constexpr LampArrayKind m_kind = LampArrayKind::LampArrayKindPeripheral;
 
 PROGMEM const LampArrayAttributesReport lampArrayAttributesReport{
   .ReportId = LAMP_ARRAY_ATTRIBUTES_REPORT_ID,
@@ -281,10 +68,12 @@ PROGMEM const LampArrayAttributesReport lampArrayAttributesReport{
   .BoundingBoxWidthInMillimeters = m_boundingBoxWidthInMicrometers,
   .BoundingBoxHeightInMillimeters = m_boundingBoxHeightInMicrometers,
   .BoundingBoxDepthInMillimeters = m_boundingBoxDepthInMicrometers,
-  .LampArrayKind = LampArrayKind::LampArrayKindPeripheral,
+  .LampArrayKind = m_kind,
   .MinUpdateIntervalInMicroseconds = m_minUpdateInternalInMicroseconds
 };
+/********************/
 
+//This is the format the LED strip expects the data to arrive. Do not change structure.
 struct GRBW{
   uint8_t G;
   uint8_t R;
@@ -302,13 +91,13 @@ struct GRBW{
 };
 
 
-
 template <typename T>
 constexpr T smallest(T x, T y, T z)
 {
   return x < y ? (x < z ? x : z) : (y < z ? y : z);
 }
 
+/// @brief Used to perform gamma correction over LED brightness, as they respon non-linearly
 const uint8_t PROGMEM gamma8[] = {
     0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
     0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  1,  1,  1,  1,
@@ -327,59 +116,14 @@ const uint8_t PROGMEM gamma8[] = {
   177,180,182,184,186,189,191,193,196,198,200,203,205,208,210,213,
   215,218,220,223,225,228,231,233,236,239,241,244,247,249,252,255 };
 
-uint8_t gammaCorrect(uint8_t color)
+/// @brief Structure for operations over individual LED, and remembering the last state. Can be inherited or changed.
+struct MyLed
 {
-  return pgm_read_byte(&gamma8[color]);
-}
-
-constexpr GRBW RGBtoRGBW(uint8_t r, uint8_t g, uint8_t b)
-{
-  //constexpr uint8_t r = 255;
-  //constexpr uint8_t g = 212;
-  //constexpr uint8_t b = 177;
-  uint8_t w_out = smallest(r, g, b);
-
-
-  constexpr uint8_t white_rgb_r = 255;
-  constexpr uint8_t white_rgb_g = 255;
-  constexpr uint8_t white_rgb_b = 255;
-
-  constexpr uint8_t white_white_r = 255;
-  constexpr uint8_t white_white_g = 206;
-  constexpr uint8_t white_white_b = 176;
-
-  constexpr float r_a = 1.0 * white_white_r/white_rgb_r;
-  constexpr float g_a = 1.0 * white_white_g/white_rgb_g;
-  constexpr float b_a = 1.0 * white_white_b/white_rgb_b;
-
-
-  uint8_t r_out = r-(uint8_t)(w_out*r_a);
-  uint8_t g_out = g-(uint8_t)(w_out*g_a);
-  uint8_t b_out = b-(uint8_t)(w_out*b_a);
-
-  return GRBW{
-    .G = g_out,
-    .R = r_out,
-    .B = b_out,
-    .W = w_out
-  };
-}
-
-GRBW gammaCorrect(GRBW in)
-{
-  return GRBW{
-    .G = gammaCorrect(in.G),
-    .R = gammaCorrect(in.R),
-    .B = gammaCorrect(in.B),
-    .W = gammaCorrect(in.W)
-  };
-}
-
-
-struct MyLed{
-  static constexpr void exportGeneralAttributes(LampAttributes& attributes)
+  /// @brief Sets attributes that are the same for all LEDs
+  /// @param attributes The attributes are set here
+  static constexpr void exportGeneralAttributes(LampAttributes &attributes)
   {
-    attributes.UpdateLatencyInMicroseconds = m_minUpdateInternalInMicroseconds;//2500;//400Hz
+    attributes.UpdateLatencyInMicroseconds = m_minUpdateInternalInMicroseconds; // 2500;//400Hz
     attributes.LampPurposes = LampPurposeKind::LampPurposeAccent;
     attributes.RedLevelCount = 255;
     attributes.GreenLevelCount = 255;
@@ -391,47 +135,101 @@ struct MyLed{
     attributes.PositionYInMillimeters = 0;
     attributes.PositionZInMillimeters = 0;
   }
-
-  static constexpr void exportIndividualAttributes(uint16_t lampId, LampAttributes& attributes)
+  /// @brief Sets attributes for individual LED based on its index
+  /// @param lampId The index of the LED
+  /// @param attributes The attributes are set here
+  static constexpr void exportIndividualAttributes(uint16_t lampId, LampAttributes &attributes)
   {
     attributes.LampId = lampId;
-    attributes.PositionXInMillimeters = lampId*(m_boundingBoxWidthInMicrometers/m_lampCount);
+    attributes.PositionXInMillimeters = lampId * (m_boundingBoxWidthInMicrometers / m_lampCount);
+  }
+  /// @brief Set the color of this LED
+  /// @param lampArrayColor The color to set it to
+  /// @return If there was a change performing this operation (false if setting to the same color as was before).
+  bool set(const LampArrayColor &lampArrayColor)
+  {
+    return set(lampArrayColor.RedChannel, lampArrayColor.GreenChannel, lampArrayColor.BlueChannel);
   }
 
+private:
+  /// @brief Performs gamma correction over one channel
+  /// @param color The color to correct
+  /// @return Gamma-corrected value, better representing human perceived brightness
+  static uint8_t gammaCorrect(uint8_t color)
+  {
+    return pgm_read_byte(&gamma8[color]);
+  }
+  /// @brief Converts RGB colorspace to RGBW.
+  /// @param r Red channel of the source colorspace
+  /// @param g Green channel of the source colorspace
+  /// @param b Blue channel of the source colorspace
+  /// @return RGBW colorspace.
+  static constexpr GRBW RGBtoRGBW(uint8_t r, uint8_t g, uint8_t b)
+  {
+    uint8_t w_out = smallest(r, g, b);
+
+    constexpr float r_a = 1.0 * white_white_r / white_rgb_r;
+    constexpr float g_a = 1.0 * white_white_g / white_rgb_g;
+    constexpr float b_a = 1.0 * white_white_b / white_rgb_b;
+
+    uint8_t r_out = r - (uint8_t)(w_out * r_a);
+    uint8_t g_out = g - (uint8_t)(w_out * g_a);
+    uint8_t b_out = b - (uint8_t)(w_out * b_a);
+
+    return GRBW{
+        .G = g_out,
+        .R = r_out,
+        .B = b_out,
+        .W = w_out};
+  }
+
+  /// @brief Performs gamma correction over all channels
+  /// @param in The color to correct
+  /// @return Gamma-corrected value, better representing human perceived brightness
+  static GRBW gammaCorrect(GRBW in)
+  {
+    return GRBW{
+        .G = gammaCorrect(in.G),
+        .R = gammaCorrect(in.R),
+        .B = gammaCorrect(in.B),
+        .W = gammaCorrect(in.W)};
+  }
+  /// @brief Sets the color of this LED directly knowing all channels.
+  /// @param R R
+  /// @param G G
+  /// @param B B
+  /// @param W W
+  /// @return If there was a change performing this operation (false if setting to the same color as was before).
   bool set(uint8_t R, uint8_t G, uint8_t B, uint8_t W)
   {
-    bool changed = color.R!=R || color.G!=G || color.B!=B || color.W!= W;
+    bool changed = color.R != R || color.G != G || color.B != B || color.W != W;
     color.R = R;
     color.G = G;
     color.B = B;
-    color.W = W; //TODO
+    color.W = W;
 
     return changed;
   }
+  /// @brief  Sets the color of this LED directly knowing RGB.
+  /// @param r R
+  /// @param g G
+  /// @param b B
+  /// @return If there was a change performing this operation (false if setting to the same color as was before).
   bool set(uint8_t r, uint8_t g, uint8_t b)
   {
-    auto newColor = gammaCorrect(RGBtoRGBW(r,g,b));
-    bool res = color!=newColor;
+    auto newColor = gammaCorrect(RGBtoRGBW(r, g, b));
+    bool res = color != newColor;
     color = newColor;
     return res;
-  }
-  
-  bool set(const LampArrayColor& lampArrayColor)
-  {
-    return set(lampArrayColor.RedChannel,lampArrayColor.GreenChannel,lampArrayColor.BlueChannel);
-  }
-
-  uint8_t operator[](uint8_t idx) const
-  { 
-    const uint8_t* colorArr = (uint8_t*)&color;
-    return colorArr[idx]; 
   }
 
   GRBW color;
 };
 
+//If having multiple LED classes, it can be specified which is gonna be used.
 typedef MyLed LED;
 
+/// @brief Class to operate over one connected LED strip.
 struct LEDStrip
 {
   LEDStrip()
@@ -439,10 +237,13 @@ struct LEDStrip
     _pin_mask = digitalPinToBitMask(pinStrip);
     _port = portOutputRegister(digitalPinToPort(pinStrip));
     _port_reg = portModeRegister(digitalPinToPort(pinStrip));
+
+    memset(leds,0,sizeof(leds));
   }
 
+  //There is no need to update the whole strip if only one LED changed. Keep the index of the furthest LED that needs to be changed.
   int16_t updateLedsToIndex = -1;
-  LED leds[m_lampCount] = {0};
+  LED leds[m_lampCount];
 
   uint8_t _pin_mask;
   volatile uint8_t *_port;
@@ -458,36 +259,33 @@ struct LEDStrip
   {
     *_port_reg |= _pin_mask;
 
-    //sendarray_mask((uint8_t *)leds, sizeof(*leds) * (updateLedsToIndex + 1), _pin_mask, (uint8_t *)_port, (uint8_t *)_port_reg);
-
+    StripSend sendingProcess(_pin_mask, (uint8_t *)_port, (uint8_t *)_port_reg);
+    size_t size = sizeof(*leds) * (updateLedsToIndex + 1);
+    for (size_t i = 0; i < size; i++)
     {
-      StripSend sendingProcess(_pin_mask, (uint8_t *)_port, (uint8_t *)_port_reg);
-      size_t size = sizeof(*leds) * (updateLedsToIndex + 1);
-      for (size_t i = 0; i < size; i++)
-      {
-        sendingProcess.sendByte(((uint8_t *)leds)[i]);//leds[i/sizeof(*leds)][i%sizeof(*leds)]
-      }
+      sendingProcess.sendByte(((uint8_t *)leds)[i]);
     }
-
-    
-
 
     updateLedsToIndex = -1;
   }
 
 } ledStrip;
 
+//Needed for holding state of HID responses.
 uint16_t m_lastLampIdRequested = 0;
-bool m_isAutonomousMode = true;
+bool m_isAutonomousMode = true;//Does nothing. If set to true, the PC relinquishes the control of the strip.
+LampAttributesResponseReport lampAttributeReport;
+bool updateLeds = false;
 
-void setup() {
-  ADCSRA &= ~(1<<ADEN);
-  power_adc_disable ();
+void setup()
+{
+  //Turn of useless components.
+  ADCSRA &= ~(1 << ADEN);
+  power_adc_disable();
   power_spi_disable();
   power_twi_disable();
-  //LED_OUT();
-  //LED_OFF();
 
+  //Set attributes that are the same only here, once.
   lampAttributeReport.ReportId = LAMP_ATTRIBUTES_RESPONSE_REPORT_ID;
   LED::exportGeneralAttributes(lampAttributeReport.Attributes);
 
@@ -504,36 +302,34 @@ void setup() {
   interrupts();
 }
 
-
-template<typename T>
-usbMsgLen_t SendFeatureReport(const T& data) noexcept
+/// @brief Marks the report as ready for sending.
+/// @tparam T The type of the report. Is implicitly guessed.
+/// @param data The report structure (in RAM). The lifetime of this must be at least until the USB sends the data.
+/// @return The length of the message. Pass this on to the USB handler.
+template <typename T>
+usbMsgLen_t SendFeatureReport(const T &data) noexcept
 {
   usbMsgPtr = (uchar *)&data;
-  usbMsgFlags &= ~USB_FLG_MSGPTR_IS_ROM;
+  usbMsgFlags &= ~USB_FLG_MSGPTR_IS_ROM;//Is in RAM, not in ROM
   return sizeof(data);
 }
+
 
 usbMsgLen_t SendLampArrayAttributesReport() noexcept
 {
   usbMsgPtr = (uchar *)&lampArrayAttributesReport;
-  usbMsgFlags |= USB_FLG_MSGPTR_IS_ROM;
+  usbMsgFlags |= USB_FLG_MSGPTR_IS_ROM;//Is in ROM, to save on memory. Must be specified explicitly.
   return sizeof(lampArrayAttributesReport);
 }
 
 usbMsgLen_t SendLampAttributesReport() noexcept
 {
-  //LampAttributesResponseReport lampAttributeReport;
-  //lampAttributeReport.ReportId = LAMP_ATTRIBUTES_RESPONSE_REPORT_ID;
-  //LED::exportGeneralAttributes(lampAttributeReport.Attributes);
-
   LED::exportIndividualAttributes(m_lastLampIdRequested, lampAttributeReport.Attributes);
 
-  m_lastLampIdRequested = (m_lastLampIdRequested+1)%m_lampCount;
+  m_lastLampIdRequested = (m_lastLampIdRequested + 1) % m_lampCount;
 
   return SendFeatureReport(lampAttributeReport);
 }
-
-bool updateLeds = false;
 
 
 void UpdateRequestLampFromLampAttributesRequestReport(const LampAttributesRequestReport &report) noexcept
@@ -588,19 +384,27 @@ void UpdateLampStateCacheFromRangeUpdateReport(const LampRangeUpdateReport &repo
   }
 }
 
-void ProcessControlReport(const LampArrayControlReport& report) noexcept
+void ProcessControlReport(const LampArrayControlReport &report) noexcept
 {
   m_isAutonomousMode = !!report.AutonomousMode;
 }
 
 void loop()
 {
-  usbPoll();
+  usbPoll();//Always poll USB as often as possible
 
-  if (updateLeds)
+  if (updateLeds) //If the poll resulted in a request for update
   {
     updateLeds = false;
 
+    //Very important when using V-USB! During the time that the LED strip will be updated,
+    //all interrupts need to be disabled. Because of that, we have to be sure no USB communication
+    //is taking place during this time, or the device permanently disconnects/stops reponding (no LampArray device available).
+
+    //This is a little bit of a hack, because the PC has to wait the minimum specified time before sending another
+    //update to the LampArray. During this time, the lanes should be quiet. We perform the risky update here.
+    //Wait too little, and the device is still sending the data back. Wait too much, and the next poll is taking place.
+    //If having problems with disconnecting, try tuning the delay here (before calling the update strip).
     uint8_t timeoutCounter = 0;
     do
     {
@@ -611,28 +415,29 @@ void loop()
   }
 }
 
+/// @brief Contains every type that we receive, to save space
 union ReceivedData
 {
-  uint8_t ReportId;
+  uint8_t ReportId;//When data is received, one can tell the type by checking this id
   LampAttributesRequestReport attributesRequest;
   LampMultiUpdateReport multiUpdate;
   LampRangeUpdateReport rangeUpdate;
   LampArrayControlReport control;
 } receivedData;
 
-struct hidRequest{
-    uint8_t     bmRequestType;
-    uint8_t     bRequest;
-    uint8_t     ReportID;
-    uint8_t     ReportType;
-    usbWord_t   wIndex;
-    usbWord_t   wLength;
+/// @brief This is how HID request looks like.
+struct hidRequest
+{
+  uint8_t bmRequestType;
+  uint8_t bRequest;
+  uint8_t ReportID;
+  uint8_t ReportType;
+  usbWord_t wIndex;
+  usbWord_t wLength;
 };
 
-
-
 uint16_t bytesToRead;
-uchar * writeBuf;
+uchar *writeBuf;
 
 #ifdef __cplusplus
 extern "C"
@@ -664,11 +469,10 @@ extern "C"
         case LAMP_MULTI_UPDATE_REPORT_ID:
         case LAMP_RANGE_UPDATE_REPORT_ID:
         case LAMP_ARRAY_CONTROL_REPORT_ID:
-          //receivedType = rq->ReportID;
           bytesToRead = rq->wLength.word;
-          writeBuf = (unsigned char*) &receivedData;
+          writeBuf = (unsigned char *)&receivedData;
           return USB_NO_MSG; /* Use usbFunctionWrite() to get data from host */
-        break;
+          break;
         default: [[unlikely]]
           break;
         }
@@ -684,13 +488,12 @@ extern "C"
   // This function changes our feature report, and is called from V-USB library after we return USB_NO_MSG from the function above.
   uchar usbFunctionWrite(uchar *data, uchar len)
   {
-
     if (len > bytesToRead)
       len = bytesToRead;
     memcpy(writeBuf, data, len);
 
     writeBuf += len;
-    bytesToRead-= len;
+    bytesToRead -= len;
     bool isEnd = bytesToRead == 0;
 
     if (isEnd) [[likely]]
