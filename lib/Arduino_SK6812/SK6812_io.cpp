@@ -61,6 +61,96 @@
 #define w_nop8  w_nop4 w_nop4
 #define w_nop16 w_nop8 w_nop8
 
+struct StripSend
+{
+  StripSend(uint8_t maskhi, uint8_t *port, uint8_t *portreg) : maskhi(maskhi | *port), masklo(~maskhi & *port), port(port), sreg_prev(SREG) 
+  {
+    cli();
+  }
+
+  ~StripSend()
+  {
+    SREG = sreg_prev;
+
+    sei();
+  }
+
+  void sendByte(uint8_t byte)
+  {
+    asm volatile(
+    "       ldi   %0,8  \n\t"
+    "loop%=:            \n\t"
+    "       st    X,%3 \n\t"    //  '1' [02] '0' [02] - re
+#if (w1_nops&1)
+w_nop1
+#endif
+#if (w1_nops&2)
+w_nop2
+#endif
+#if (w1_nops&4)
+w_nop4
+#endif
+#if (w1_nops&8)
+w_nop8
+#endif
+#if (w1_nops&16)
+w_nop16
+#endif
+    "       sbrs  %1,7  \n\t"    //  '1' [04] '0' [03]
+    "       st    X,%4 \n\t"     //  '1' [--] '0' [05] - fe-low
+    "       lsl   %1    \n\t"    //  '1' [05] '0' [06]
+#if (w2_nops&1)
+  w_nop1
+#endif
+#if (w2_nops&2)
+  w_nop2
+#endif
+#if (w2_nops&4)
+  w_nop4
+#endif
+#if (w2_nops&8)
+  w_nop8
+#endif
+#if (w2_nops&16)
+  w_nop16 
+#endif
+    "       brcc skipone%= \n\t"    //  '1' [+1] '0' [+2] - 
+    "       st   X,%4      \n\t"    //  '1' [+3] '0' [--] - fe-high
+    "skipone%=:               "     //  '1' [+3] '0' [+2] - 
+
+#if (w3_nops&1)
+w_nop1
+#endif
+#if (w3_nops&2)
+w_nop2
+#endif
+#if (w3_nops&4)
+w_nop4
+#endif
+#if (w3_nops&8)
+w_nop8
+#endif
+#if (w3_nops&16)
+w_nop16
+#endif
+
+    "       dec   %0    \n\t"    //  '1' [+4] '0' [+3]
+    "       brne  loop%=\n\t"    //  '1' [+5] '0' [+4]
+    :	"=&d" (ctr)
+//    :	"r" (curbyte), "I" (_SFR_IO_ADDR(ws2812_PORTREG)), "r" (maskhi), "r" (masklo)
+    :	"r" (byte), "x" (port), "r" (maskhi), "r" (masklo)
+    );
+  }
+
+private:
+  uint8_t* port;
+  uint8_t masklo;
+  uint8_t maskhi;
+  uint8_t sreg_prev;
+  uint8_t ctr;
+};
+
+
 void sendarray_mask(uint8_t *data,uint16_t datlen,uint8_t maskhi,uint8_t *port, uint8_t *portreg)
 {
   uint8_t curbyte,ctr,masklo;

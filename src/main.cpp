@@ -421,6 +421,12 @@ struct MyLed{
     return set(lampArrayColor.RedChannel,lampArrayColor.GreenChannel,lampArrayColor.BlueChannel);
   }
 
+  uint8_t operator[](uint8_t idx) const
+  { 
+    const uint8_t* colorArr = (uint8_t*)&color;
+    return colorArr[idx]; 
+  }
+
   GRBW color;
 };
 
@@ -452,8 +458,19 @@ struct LEDStrip
   {
     *_port_reg |= _pin_mask;
 
-    //updateLedsToIndex = 35;
-    sendarray_mask((uint8_t *)leds, sizeof(*leds) * (updateLedsToIndex + 1), _pin_mask, (uint8_t *)_port, (uint8_t *)_port_reg);
+    //sendarray_mask((uint8_t *)leds, sizeof(*leds) * (updateLedsToIndex + 1), _pin_mask, (uint8_t *)_port, (uint8_t *)_port_reg);
+
+    {
+      StripSend sendingProcess(_pin_mask, (uint8_t *)_port, (uint8_t *)_port_reg);
+      size_t size = sizeof(*leds) * (updateLedsToIndex + 1);
+      for (size_t i = 0; i < size; i++)
+      {
+        sendingProcess.sendByte(((uint8_t *)leds)[i]);//leds[i/sizeof(*leds)][i%sizeof(*leds)]
+      }
+    }
+
+    
+
 
     updateLedsToIndex = -1;
   }
